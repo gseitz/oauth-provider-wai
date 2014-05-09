@@ -1,0 +1,9 @@
+language: haskell
+script:
+        - git clone https://github.com/gseitz/oauth-provider.git
+        - cabal sandbox init
+        - cabal sandbox add-source oauth-provider
+        - cabal configure --enable-tests
+        - cabal build
+        - cabal test --show-details=always
+
