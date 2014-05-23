@@ -34,7 +34,6 @@ import qualified Data.Vault.Lazy            as V
 
 
 import           Network.OAuth.Provider.OAuth1
-import           Network.OAuth.Provider.OAuth1.Internal
 import           Network.OAuth.Provider.OAuth1.Types
 
 
@@ -111,7 +110,7 @@ extractFormBodyParameters req =
 toOAuthRequest :: Request -> IO (Request, Either OAuthError OAuthRequest)
 toOAuthRequest req = do
     (req', bodyParams) <- extractFormBodyParameters req
-    let authHeaderParams = fromMaybe [] $ parseAuthentication <$> lookup "Authentication" (requestHeaders req)
+    let authHeaderParams = fromMaybe [] $ parseAuthHeader <$> lookup "Authentication" (requestHeaders req)
         hostPort = (hush . A.parseOnly hostPortParser) =<< requestHeaderHost req
         mkRequest (host, port) = OAuthRequest (isSecure req) (pathInfo req) (query req) bodyParams authHeaderParams host port (requestMethod req)
     return (req', maybe (Left MissingHostHeader) (Right . mkRequest) hostPort)
