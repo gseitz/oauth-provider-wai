@@ -6,31 +6,36 @@ module Network.OAuth.Provider.OAuth1.Wai
     , toWaiResponse
     ) where
 
-import           Control.Arrow              (second)
-import           Control.Error.Util         (hush)
-import           Control.Monad.IO.Class     (MonadIO, liftIO)
-import           Data.Attoparsec.Char8      (Parser)
-import           Data.Functor               ((<$>))
-import           Data.IORef.Lifted          (newIORef, readIORef, writeIORef)
-import           Data.List                  (isPrefixOf)
-import           Data.Maybe                 (fromMaybe)
-import           Data.Monoid                (mconcat)
-import           Data.Text                  (Text)
-import           Network.HTTP.Types         (parseSimpleQuery, queryToQueryText)
-import           Network.Wai                (Middleware, Request, Response,
-                                             isSecure, pathInfo, queryString,
-                                             requestBody, requestHeaderHost,
-                                             requestHeaders, requestMethod,
-                                             responseLBS, vault)
-import           Network.Wai.Parse          (RequestBodyType (..),
-                                             getRequestBodyType)
+import           Control.Arrow                       (second)
+import           Control.Error.Util                  (hush)
+import           Control.Monad.IO.Class              (liftIO)
+import           Data.Attoparsec.Char8               (Parser)
+import           Data.Functor                        ((<$>))
+import           Data.IORef.Lifted                   (newIORef, readIORef,
+                                                      writeIORef)
+import           Data.List                           (isPrefixOf)
+import           Data.Maybe                          (fromMaybe)
+import           Data.Monoid                         (mconcat)
+import           Data.Text                           (Text)
+import           Network.HTTP.Types                  (parseSimpleQuery,
+                                                      queryToQueryText)
+import           Network.Wai                         (Middleware, Request,
+                                                      Response, isSecure,
+                                                      pathInfo, queryString,
+                                                      requestBody,
+                                                      requestHeaderHost,
+                                                      requestHeaders,
+                                                      requestMethod,
+                                                      responseLBS, vault)
+import           Network.Wai.Parse                   (RequestBodyType (..),
+                                                      getRequestBodyType)
 
-import qualified Data.Attoparsec.Char8      as A
-import qualified Data.ByteString.Lazy       as BL
-import qualified Data.Conduit               as C
-import qualified Data.Conduit.List          as CL
-import qualified Data.Text.Encoding         as E
-import qualified Data.Vault.Lazy            as V
+import qualified Data.Attoparsec.Char8               as A
+import qualified Data.ByteString.Lazy                as BL
+import qualified Data.Conduit                        as C
+import qualified Data.Conduit.List                   as CL
+import qualified Data.Text.Encoding                  as E
+import qualified Data.Vault.Lazy                     as V
 
 
 import           Network.OAuth.Provider.OAuth1
