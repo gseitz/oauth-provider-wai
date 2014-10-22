@@ -6,40 +6,32 @@ module Network.OAuth.Provider.OAuth1.Wai
     , toWaiResponse
     ) where
 
-import           Control.Arrow                       (second)
-import           Control.Error.Util                  (hush)
-import           Control.Monad.IO.Class              (liftIO)
-import           Data.Attoparsec.Char8               (Parser)
-import           Data.Functor                        ((<$>))
-import           Data.IORef.Lifted                   (newIORef, readIORef,
-                                                      writeIORef)
-import           Data.List                           (isPrefixOf)
-import           Data.Maybe                          (fromMaybe)
-import           Data.Monoid                         (mconcat)
-import           Data.Text                           (Text)
-import           Network.HTTP.Types                  (parseSimpleQuery,
-                                                      queryToQueryText)
-import           Network.Wai                         (Middleware, Request,
-                                                      Response, isSecure,
-                                                      pathInfo, queryString,
-                                                      requestBody,
-                                                      requestHeaderHost,
-                                                      requestHeaders,
-                                                      requestMethod,
-                                                      responseLBS, vault)
-import           Network.Wai.Parse                   (RequestBodyType (..),
-                                                      getRequestBodyType)
+import Control.Arrow          (second)
+import Control.Error.Util     (hush)
+import Control.Monad.IO.Class (liftIO)
+import Data.Attoparsec.Char8  (Parser)
+import Data.Functor           ((<$>))
+import Data.IORef.Lifted      (newIORef, readIORef, writeIORef)
+import Data.List              (isPrefixOf)
+import Data.Maybe             (fromMaybe)
+import Data.Monoid            (mconcat)
+import Data.Text              (Text)
+import Network.HTTP.Types     (parseSimpleQuery, queryToQueryText)
+import Network.Wai            (Middleware, Request, Response, ResponseReceived,
+                               isSecure, pathInfo, queryString, requestBody,
+                               requestHeaderHost, requestHeaders, requestMethod,
+                               responseLBS, vault)
+import Network.Wai.Parse      (RequestBodyType (..), getRequestBodyType)
 
-import qualified Data.Attoparsec.Char8               as A
-import qualified Data.ByteString.Lazy                as BL
-import qualified Data.Conduit                        as C
-import qualified Data.Conduit.List                   as CL
-import qualified Data.Text.Encoding                  as E
-import qualified Data.Vault.Lazy                     as V
+import qualified Data.Attoparsec.Char8 as A
+import qualified Data.ByteString       as B
+import qualified Data.ByteString.Lazy  as BL
+import qualified Data.Text.Encoding    as E
+import qualified Data.Vault.Lazy       as V
 
 
-import           Network.OAuth.Provider.OAuth1
-import           Network.OAuth.Provider.OAuth1.Types
+import Network.OAuth.Provider.OAuth1
+import Network.OAuth.Provider.OAuth1.Types
 
 
 -- | 'withOAuth' acts as a 'Middleware' and intercepts requests to check for
@@ -61,32 +53,35 @@ withOAuth ::
     -> [PathParts]    -- ^ These are the prefixes for request paths that need to
                       -- be authenticated OAuth requests.
     -> Middleware
-withOAuth paramsKey cfg prefixes app req =
+withOAuth paramsKey cfg prefixes app req sendResponse =
     if needsProtection
-        then convertAndExecute req executeOAuthRequest
-        else app req
+        then convertAndExecute req sendResponse executeOAuthRequest
+        else app req sendResponse
   where
     -- check if any of the supplied paths is a prefix of the current request path
     needsProtection = any (`isPrefixOf` pathInfo req) prefixes
     setParams r p = r { vault = V.insert paramsKey p (vault r) }
     executeOAuthRequest req' oauthReq = do
         errorOrParams <- runOAuth (cfg, oauthReq) authenticated
-        either errorAsWaiResponse (app . setParams req') errorOrParams
+        case errorOrParams of
+            Left err     -> errorAsWaiResponse sendResponse err
+            Right params -> app (setParams req' params) sendResponse
 
 -- | Converts the given 'Request' and executes the action function.
 convertAndExecute :: Request -- ^ The original Wai 'Request'.
-    -> (Request -> OAuthRequest -> IO Response)
+    -> (Response -> IO ResponseReceived)
+    -> (Request -> OAuthRequest -> IO ResponseReceived)
     -- ^ The action function. Since converting a 'Request' to an 'OAuthRequest'
     -- potentially reads the request body, a copy of the original 'Request'
     -- with the body restored (the content is replayed) for further usage
     -- is passed to this action function as well.
-    -> IO Response
-convertAndExecute req action = do
+    -> IO ResponseReceived
+convertAndExecute req sendResponse action = do
     (req', errorOrOAuthReq) <- toOAuthRequest req
-    either errorAsWaiResponse (action req') errorOrOAuthReq
+    either (errorAsWaiResponse sendResponse) (action req') errorOrOAuthReq
 
-errorAsWaiResponse :: OAuthError -> IO Response
-errorAsWaiResponse = return . toWaiResponse . errorAsResponse
+errorAsWaiResponse :: (Response -> IO ResponseReceived) -> OAuthError -> IO ResponseReceived
+errorAsWaiResponse sendResponse =  sendResponse . toWaiResponse . errorAsResponse
 
 extractFormBodyParameters :: Request -> IO (Request, SimpleQueryText)
 extractFormBodyParameters req =
@@ -99,17 +94,21 @@ extractFormBodyParameters req =
             return (req', result)
         _               -> return (req, [])
   where
+    readBody req' = do
+        bodyPart <- requestBody req'
+        if bodyPart == B.empty
+            then return []
+            else (bodyPart :) <$> readBody req'
     replay req' = do
-        body <- requestBody req' C.$$ CL.consume
+        body <- readBody req'
         ichunks <- newIORef body
         let rbody = do
                 chunks <- readIORef ichunks
                 case chunks of
-                    [] -> return ()
+                    [] -> return B.empty
                     x:xs -> do
                         writeIORef ichunks xs
-                        C.yield x
-                        rbody
+                        return x
         return (body, rbody)
 
 toOAuthRequest :: Request -> IO (Request, Either OAuthError OAuthRequest)

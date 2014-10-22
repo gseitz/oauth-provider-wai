@@ -38,13 +38,13 @@ warpApp2Legged = do
     run 3000 $ withOAuth paramsKey config [["protected"], ["users", "VIP"]] $ warpy paramsKey config
 
 warpy :: V.Key OAuthParams -> OAuthConfig IO -> W.Application
-warpy key config waiRequest =
-    convertAndExecute waiRequest $ \ waiRequest' oauthRequest -> do
+warpy key config waiRequest sendResponse =
+    convertAndExecute waiRequest sendResponse $ \waiRequest' oauthRequest -> do
         eith <- case W.pathInfo waiRequest' of
             ["request"] -> runOAuth (config, oauthRequest) twoLeggedRequestTokenRequest
             ["access"] -> runOAuth (config, oauthRequest) twoLeggedAccessTokenRequest
             _ -> return $ Right . mkResponse $ isProtected <> " : " <> fromMaybe "successful request" echo
-        return . toWaiResponse $ either errorAsResponse id eith
+        sendResponse $ toWaiResponse $ either errorAsResponse id eith
   where
     isProtected = maybe "unprotected" (const "protected") $ V.lookup key (W.vault waiRequest)
     echo = join $ lookup "echo" $ W.queryString waiRequest
